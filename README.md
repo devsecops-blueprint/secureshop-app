@@ -19,3 +19,7 @@ Enterprise-grade DevSecOps polyglot microservices e-commerce platform.
 
 ## Research
 EICON 2026 — Track 4: CS, AI & Information Systems
+
+---
+*Active development happens on the `develop` branch.*
+*See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for the GitFlow workflow.*
