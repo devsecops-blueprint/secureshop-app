@@ -1,0 +1,63 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/vendor/
+/bin/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.pyc
+
+# Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+.gradle/
+build/
+
+# React
+dist/
+build/
+.next/
+
+# General
+.DS_Store
+*.log
+*.tmp
+.idea/
+.vscode/
+*.swp
+*.swo
+coverage/
+.env*
+!.env.example
+
+# Security — never commit these
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
