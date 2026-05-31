@@ -1,0 +1,204 @@
+# docker-compose.yml  ← root of secureshop-app
+version: "3.9"
+
+networks:
+  secureshop:
+    driver: bridge
+
+volumes:
+  postgres-user:
+  postgres-product:
+  postgres-order:
+  postgres-payment:
+  redis-data:
+  kafka-data:
+  zookeeper-data:
+
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────
+
+  postgres-user:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: userdb
+      POSTGRES_USER: secureshop
+      POSTGRES_PASSWORD: dev-password
+    volumes:
+      - postgres-user:/var/lib/postgresql/data
+    networks: [secureshop]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshop -d userdb"]
+      interval: 10s
+      retries: 5
+
+  postgres-product:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: productdb
+      POSTGRES_USER: secureshop
+      POSTGRES_PASSWORD: dev-password
+    volumes:
+      - postgres-product:/var/lib/postgresql/data
+    networks: [secureshop]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshop -d productdb"]
+      interval: 10s
+      retries: 5
+
+  postgres-order:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orderdb
+      POSTGRES_USER: secureshop
+      POSTGRES_PASSWORD: dev-password
+    volumes:
+      - postgres-order:/var/lib/postgresql/data
+    networks: [secureshop]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshop -d orderdb"]
+      interval: 10s
+      retries: 5
+
+  postgres-payment:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: paymentdb
+      POSTGRES_USER: secureshop
+      POSTGRES_PASSWORD: dev-password
+    volumes:
+      - postgres-payment:/var/lib/postgresql/data
+    networks: [secureshop]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secureshop -d paymentdb"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks: [secureshop]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    networks: [secureshop]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks: [secureshop]
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      retries: 5
+
+  # ── Application services ────────────────────────────────────
+
+  user-service:
+    build: ./services/user-service
+    environment:
+      PORT: "50051"
+      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-user:5432/userdb"
+      JWT_SECRET: "dev-secret-do-not-use-in-prod"
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+    networks: [secureshop]
+
+  product-service:
+    build: ./services/product-service
+    environment:
+      PORT: "50051"
+      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-product:5432/productdb"
+    depends_on:
+      postgres-product:
+        condition: service_healthy
+    networks: [secureshop]
+
+  order-service:
+    build: ./services/order-service
+    environment:
+      PORT: "50051"
+      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-order:5432/orderdb"
+      KAFKA_BROKERS: "kafka:9092"
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks: [secureshop]
+
+  payment-service:
+    build: ./services/payment-service
+    environment:
+      SERVER_PORT: "50051"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-payment:5432/paymentdb"
+      SPRING_DATASOURCE_USERNAME: "secureshop"
+      SPRING_DATASOURCE_PASSWORD: "dev-password"
+      KAFKA_BROKERS: "kafka:9092"
+    depends_on:
+      postgres-payment:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks: [secureshop]
+
+  notification-service:
+    build: ./services/notification-service
+    environment:
+      KAFKA_BROKERS: "kafka:9092"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks: [secureshop]
+
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      JWT_SECRET: "dev-secret-do-not-use-in-prod"
+      USER_SERVICE_ADDR: "user-service:50051"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
+      ORDER_SERVICE_ADDR: "order-service:50051"
+      PAYMENT_SERVICE_ADDR: "payment-service:50051"
+      ALLOWED_ORIGINS: "http://localhost:3000"
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+      - payment-service
+    networks: [secureshop]
+
+  frontend:
+    build: ./services/frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_GRAPHQL_URL: "http://localhost:8080/graphql"
+    depends_on:
+      - api-gateway
+    networks: [secureshop]

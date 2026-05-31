@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package payments;
+
+option java_package = "com.secureshop.payment.grpc";
+option java_outer_classname = "PaymentProto";
+option java_multiple_files = true;
+
+service PaymentService {
+  rpc ProcessPayment(ProcessPaymentRequest) returns (PaymentResponse);
+  rpc GetPayment(GetPaymentRequest)         returns (PaymentResponse);
+  rpc RefundPayment(RefundPaymentRequest)   returns (PaymentResponse);
+}
+
+message ProcessPaymentRequest {
+  string order_id       = 1;
+  string user_id        = 2;
+  double amount         = 3;
+  string currency       = 4;
+  string payment_method = 5;
+}
+
+message GetPaymentRequest {
+  string payment_id = 1;
+}
+
+message RefundPaymentRequest {
+  string payment_id = 1;
+  string reason     = 2;
+}
+
+message PaymentResponse {
+  string id         = 1;
+  string order_id   = 2;
+  string user_id    = 3;
+  double amount     = 4;
+  string currency   = 5;
+  string status     = 6;
+  string created_at = 7;
+}
