@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package orders;
+
+option go_package = "github.com/devsecops-blueprint/secureshop/order-service/proto";
+
+service OrderService {
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+  rpc GetOrder(GetOrderRequest)       returns (OrderResponse);
+  rpc ListOrders(ListOrdersRequest)   returns (ListOrdersResponse);
+}
+
+message OrderItem {
+  string product_id   = 1;
+  string product_name = 2;
+  int32  quantity     = 3;
+  double unit_price   = 4;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItem items = 2;
+}
+
+message GetOrderRequest {
+  string order_id = 1;
+}
+
+message ListOrdersRequest {
+  string user_id = 1;
+}
+
+message OrderResponse {
+  string id         = 1;
+  string user_id    = 2;
+  string status     = 3;
+  double total      = 4;
+  repeated OrderItem items = 5;
+  string created_at = 6;
+}
+
+message ListOrdersResponse {
+  repeated OrderResponse orders = 1;
+}
