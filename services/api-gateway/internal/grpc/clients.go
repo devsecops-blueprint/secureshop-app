@@ -4,19 +4,19 @@ import (
 "log"
 
 "github.com/devsecops-blueprint/secureshop/api-gateway/internal/config"
+pb "github.com/devsecops-blueprint/secureshop/api-gateway/proto"
 "google.golang.org/grpc"
 "google.golang.org/grpc/credentials/insecure"
 )
 
-// Clients holds live gRPC connections to all downstream services.
-// In production (with Istio mTLS STRICT), these use insecure.NewCredentials()
-// because Istio's sidecar proxy handles mTLS transparently — the app code
-// stays credential-free and the mesh enforces encryption at the network layer.
 type Clients struct {
 UserConn    *grpc.ClientConn
 ProductConn *grpc.ClientConn
 OrderConn   *grpc.ClientConn
 PaymentConn *grpc.ClientConn
+Users       pb.UserServiceClient
+Products    pb.ProductServiceClient
+Orders      pb.OrderServiceClient
 }
 
 func NewClients(cfg *config.Config) (*Clients, error) {
@@ -49,6 +49,9 @@ UserConn:    userConn,
 ProductConn: productConn,
 OrderConn:   orderConn,
 PaymentConn: paymentConn,
+Users:       pb.NewUserServiceClient(userConn),
+Products:    pb.NewProductServiceClient(productConn),
+Orders:      pb.NewOrderServiceClient(orderConn),
 }, nil
 }
 

@@ -138,8 +138,9 @@ services:
     build: ./services/order-service
     environment:
       PORT: "50051"
-      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-order:5432/orderdb"
+      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-order:5432/orderdb?sslmode=disable"
       KAFKA_BROKERS: "kafka:9092"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
     depends_on:
       postgres-order:
         condition: service_healthy
@@ -155,6 +156,7 @@ services:
       SPRING_DATASOURCE_USERNAME: "secureshop"
       SPRING_DATASOURCE_PASSWORD: "dev-password"
       KAFKA_BROKERS: "kafka:9092"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
     depends_on:
       postgres-payment:
         condition: service_healthy
@@ -166,6 +168,7 @@ services:
     build: ./services/notification-service
     environment:
       KAFKA_BROKERS: "kafka:9092"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
       REDIS_URL: "redis://redis:6379"
     depends_on:
       redis:
