@@ -5,14 +5,18 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    host: '0.0.0.0',  // Required for Docker — binds to all interfaces
+    host: '0.0.0.0',  // Required for Docker — listen on all interfaces
     proxy: {
-      // In dev, proxy /graphql to the api-gateway container.
-      // This avoids CORS issues during local development.
+      // Proxy /graphql to the api-gateway in development
+      // This avoids CORS issues when running outside Docker
       '/graphql': {
-        target: process.env.VITE_API_URL || 'http://localhost:8080',
+        target: process.env.VITE_GRAPHQL_URL || 'http://localhost:8080',
         changeOrigin: true,
       }
     }
+  },
+  preview: {
+    port: 3000,
+    host: '0.0.0.0',
   }
 })

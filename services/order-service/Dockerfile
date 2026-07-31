@@ -3,13 +3,13 @@ FROM golang:1.22-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates protobuf
 
-RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest && \
-    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+RUN GOTOOLCHAIN=local go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.1 && \
+    GOTOOLCHAIN=local go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0
 
 WORKDIR /build
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN GOTOOLCHAIN=local go mod download
 
 COPY . .
 
@@ -18,7 +18,7 @@ RUN protoc \
     --go-grpc_out=. --go-grpc_opt=paths=source_relative \
     proto/orders.proto
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+RUN GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s" \
     -o /bin/order-service ./cmd/server
 

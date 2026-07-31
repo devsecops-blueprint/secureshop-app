@@ -1,6 +1,4 @@
-// All GraphQL queries and mutations used by the frontend.
-// Centralising them here makes it easy to see the full API surface.
-
+// ── Auth ──────────────────────────────────────────────────────
 export const LOGIN_MUTATION = `
   mutation Login($email: String!, $password: String!) {
     login(email: $email, password: $password) {
@@ -19,13 +17,28 @@ export const REGISTER_MUTATION = `
   }
 `
 
-export const GET_PRODUCTS_QUERY = `
-  query GetProducts($page: Int, $pageSize: Int, $category: String) {
+export const ME_QUERY = `
+  query Me {
+    me { id name email role }
+  }
+`
+
+// ── Products ──────────────────────────────────────────────────
+export const PRODUCTS_QUERY = `
+  query Products($page: Int, $pageSize: Int, $category: String) {
     products(page: $page, pageSize: $pageSize, category: $category) {
       products {
         id name description price stock category imageUrl
       }
       total
+    }
+  }
+`
+
+export const PRODUCT_QUERY = `
+  query Product($id: ID!) {
+    product(id: $id) {
+      id name description price stock category imageUrl
     }
   }
 `
@@ -41,16 +54,9 @@ export const SEARCH_PRODUCTS_QUERY = `
   }
 `
 
-export const GET_PRODUCT_QUERY = `
-  query GetProduct($id: ID!) {
-    product(id: $id) {
-      id name description price stock category imageUrl
-    }
-  }
-`
-
-export const GET_MY_ORDERS_QUERY = `
-  query GetMyOrders {
+// ── Orders ────────────────────────────────────────────────────
+export const MY_ORDERS_QUERY = `
+  query MyOrders {
     myOrders {
       id status total createdAt
       items { productId productName quantity unitPrice }

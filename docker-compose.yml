@@ -103,6 +103,8 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_ZOOKEEPER_SESSION_TIMEOUT_MS: 6000
+      KAFKA_ZOOKEEPER_CONNECTION_TIMEOUT_MS: 6000
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks: [secureshop]
@@ -138,8 +140,9 @@ services:
     build: ./services/order-service
     environment:
       PORT: "50051"
-      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-order:5432/orderdb"
+      DATABASE_URL: "postgresql://secureshop:dev-password@postgres-order:5432/orderdb?sslmode=disable"
       KAFKA_BROKERS: "kafka:9092"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
     depends_on:
       postgres-order:
         condition: service_healthy
@@ -151,10 +154,11 @@ services:
     build: ./services/payment-service
     environment:
       SERVER_PORT: "50051"
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-payment:5432/paymentdb"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-payment:5432/paymentdb?sslmode=disable"
       SPRING_DATASOURCE_USERNAME: "secureshop"
       SPRING_DATASOURCE_PASSWORD: "dev-password"
       KAFKA_BROKERS: "kafka:9092"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
     depends_on:
       postgres-payment:
         condition: service_healthy
@@ -166,6 +170,7 @@ services:
     build: ./services/notification-service
     environment:
       KAFKA_BROKERS: "kafka:9092"
+      PRODUCT_SERVICE_ADDR: "product-service:50051"
       REDIS_URL: "redis://redis:6379"
     depends_on:
       redis:

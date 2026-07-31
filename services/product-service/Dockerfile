@@ -9,12 +9,15 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 COPY proto/ proto/
 COPY src/   src/
 
-# Generate gRPC Python code inside the image
+# Generate gRPC Python code from proto
 RUN python -m grpc_tools.protoc \
     -I proto \
     --python_out=src/grpc \
     --grpc_python_out=src/grpc \
     proto/products.proto
+
+# Fix the generated import — protoc uses bare import, we need package-relative
+RUN sed -i 's/import products_pb2 as products__pb2/from src.grpc import products_pb2 as products__pb2/' src/grpc/products_pb2_grpc.py
 
 # ── Stage 2: Final image ──────────────────────────────────────
 FROM python:3.11-slim

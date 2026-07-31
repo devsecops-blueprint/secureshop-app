@@ -1,18 +1,40 @@
-import { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import { getClient } from '../graphql/client'
+import { LOGIN_MUTATION, REGISTER_MUTATION } from '../graphql/queries'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    // Restore session from localStorage on page reload
-    const stored = localStorage.getItem('user')
-    return stored ? JSON.parse(stored) : null
-  })
+  const [user, setUser]       = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  function login(token, userData) {
+  useEffect(() => {
+    // Restore user session from localStorage on page load
+    const stored = localStorage.getItem('user')
+    if (stored) setUser(JSON.parse(stored))
+    setLoading(false)
+  }, [])
+
+  async function login(email, password) {
+    const client = getClient()
+    const data = await client.request(LOGIN_MUTATION, { email, password })
+    const { token, user } = data.login
     localStorage.setItem('token', token)
-    localStorage.setItem('user', JSON.stringify(userData))
-    setUser(userData)
+    localStorage.setItem('user', JSON.stringify(user))
+    setUser(user)
+    return user
+  }
+
+  async function register(name, email, password) {
+    const client = getClient()
+    const data = await client.request(REGISTER_MUTATION, {
+      input: { name, email, password }
+    })
+    const { token, user } = data.register
+    localStorage.setItem('token', token)
+    localStorage.setItem('user', JSON.stringify(user))
+    setUser(user)
+    return user
   }
 
   function logout() {
@@ -22,10 +44,12 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export const useAuth = () => useContext(AuthContext)
+export function useAuth() {
+  return useContext(AuthContext)
+}

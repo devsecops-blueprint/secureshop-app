@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package products;
+
+option go_package = "github.com/devsecops-blueprint/secureshop/api-gateway/proto";
+
+service ProductService {
+  rpc GetProduct(GetProductRequest)         returns (ProductResponse);
+  rpc ListProducts(ListProductsRequest)     returns (ListProductsResponse);
+  rpc SearchProducts(SearchProductsRequest) returns (ListProductsResponse);
+}
+
+message GetProductRequest {
+  string product_id = 1;
+}
+
+message ListProductsRequest {
+  int32  page      = 1;
+  int32  page_size = 2;
+  string category  = 3;
+}
+
+message SearchProductsRequest {
+  string query = 1;
+}
+
+message ProductResponse {
+  string id          = 1;
+  string name        = 2;
+  string description = 3;
+  double price       = 4;
+  int32  stock       = 5;
+  string category    = 6;
+  string image_url   = 7;
+}
+
+message ListProductsResponse {
+  repeated ProductResponse products = 1;
+  int32                    total    = 2;
+}

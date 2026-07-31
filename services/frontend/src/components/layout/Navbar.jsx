@@ -1,12 +1,12 @@
+import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ShoppingCart, User, LogOut, Package } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useCart } from '../../context/CartContext'
 
 export default function Navbar() {
-  const { user, logout, isAuthenticated } = useAuth()
-  const { count } = useCart()
-  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+  const { count }        = useCart()
+  const navigate         = useNavigate()
 
   function handleLogout() {
     logout()
@@ -14,69 +14,107 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="bg-navy sticky top-0 z-50 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+    <nav style={styles.nav}>
+      <div style={styles.inner}>
+        {/* Logo */}
+        <Link to="/" style={styles.logo}>
+          <span style={styles.logoIcon}>⬡</span>
+          SecureShop
+        </Link>
 
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <Package className="text-primary-500" size={24} />
-            <span className="text-white font-semibold text-lg tracking-tight">
-              SecureShop
-            </span>
+        {/* Nav links */}
+        <div style={styles.links}>
+          <Link to="/" style={styles.link}>Products</Link>
+          {user && <Link to="/orders" style={styles.link}>Orders</Link>}
+        </div>
+
+        {/* Right side */}
+        <div style={styles.right}>
+          <Link to="/cart" style={styles.cartBtn}>
+            <span>Cart</span>
+            {count > 0 && <span style={styles.badge}>{count}</span>}
           </Link>
 
-          {/* Nav links */}
-          <div className="hidden md:flex items-center gap-8">
-            <Link to="/products"
-              className="text-slate-300 hover:text-white text-sm font-medium transition-colors">
-              Products
-            </Link>
-            {isAuthenticated && (
-              <Link to="/orders"
-                className="text-slate-300 hover:text-white text-sm font-medium transition-colors">
-                Orders
-              </Link>
-            )}
-          </div>
-
-          {/* Right side actions */}
-          <div className="flex items-center gap-3">
-            {/* Cart */}
-            <Link to="/cart" className="relative p-2 text-slate-300 hover:text-white transition-colors">
-              <ShoppingCart size={20} />
-              {count > 0 && (
-                <span className="absolute -top-1 -right-1 bg-primary-500 text-white
-                                 text-xs font-bold rounded-full w-5 h-5
-                                 flex items-center justify-center">
-                  {count}
-                </span>
-              )}
-            </Link>
-
-            {/* Auth */}
-            {isAuthenticated ? (
-              <div className="flex items-center gap-3">
-                <span className="text-slate-300 text-sm hidden md:block">
-                  {user?.name}
-                </span>
-                <button onClick={handleLogout}
-                  className="p-2 text-slate-300 hover:text-white transition-colors">
-                  <LogOut size={18} />
-                </button>
-              </div>
-            ) : (
-              <Link to="/login"
-                className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700
-                           text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-                <User size={16} />
-                Sign in
-              </Link>
-            )}
-          </div>
-
+          {user ? (
+            <div style={styles.userMenu}>
+              <span style={styles.userName}>{user.name}</span>
+              <button onClick={handleLogout} style={styles.logoutBtn}>
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <div style={styles.authLinks}>
+              <Link to="/login" style={styles.loginBtn}>Sign in</Link>
+              <Link to="/register" style={styles.registerBtn}>Get started</Link>
+            </div>
+          )}
         </div>
       </div>
     </nav>
   )
+}
+
+const styles = {
+  nav: {
+    background: '#0f172a',
+    borderBottom: '1px solid #1e293b',
+    position: 'sticky',
+    top: 0,
+    zIndex: 100,
+  },
+  inner: {
+    maxWidth: 1200,
+    margin: '0 auto',
+    padding: '0 24px',
+    height: 64,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 32,
+  },
+  logo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 700,
+    letterSpacing: '-0.3px',
+  },
+  logoIcon: { fontSize: 20, color: '#6366f1' },
+  links: { display: 'flex', gap: 24, flex: 1 },
+  link: { color: '#94a3b8', fontSize: 14, fontWeight: 500,
+          transition: 'color 0.15s' },
+  right: { display: 'flex', alignItems: 'center', gap: 16 },
+  cartBtn: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    color: '#94a3b8', fontSize: 14, fontWeight: 500,
+    padding: '6px 12px', borderRadius: 6,
+    border: '1px solid #1e293b',
+    transition: 'all 0.15s',
+  },
+  badge: {
+    background: '#4f46e5', color: '#fff',
+    borderRadius: '999px', fontSize: 11,
+    fontWeight: 700, padding: '1px 6px',
+    minWidth: 18, textAlign: 'center',
+  },
+  userMenu: { display: 'flex', alignItems: 'center', gap: 12 },
+  userName: { color: '#e2e8f0', fontSize: 14, fontWeight: 500 },
+  logoutBtn: {
+    background: 'transparent', color: '#94a3b8',
+    fontSize: 14, padding: '6px 12px', borderRadius: 6,
+    border: '1px solid #1e293b', cursor: 'pointer',
+  },
+  authLinks: { display: 'flex', alignItems: 'center', gap: 8 },
+  loginBtn: {
+    color: '#94a3b8', fontSize: 14, fontWeight: 500,
+    padding: '6px 14px', borderRadius: 6,
+  },
+  registerBtn: {
+    background: '#4f46e5', color: '#ffffff',
+    fontSize: 14, fontWeight: 600,
+    padding: '7px 16px', borderRadius: 6,
+    transition: 'background 0.15s',
+  },
 }

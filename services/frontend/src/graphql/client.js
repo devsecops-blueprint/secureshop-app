@@ -1,12 +1,14 @@
 import { GraphQLClient } from 'graphql-request'
 
-// In development Vite proxies /graphql to localhost:8080.
-// In production (Docker/K8s) VITE_GRAPHQL_URL is set via environment.
-const endpoint = import.meta.env.VITE_GRAPHQL_URL || '/graphql'
+// In Docker, requests go directly to api-gateway.
+// In local dev, Vite proxies /graphql to avoid CORS.
+const endpoint = '/graphql'
 
-export const gqlClient = new GraphQLClient(endpoint, {
-  headers: () => {
-    const token = localStorage.getItem('token')
-    return token ? { Authorization: `Bearer ${token}` } : {}
-  },
-})
+// Create a single shared client instance.
+// The token is read fresh on every request so login state is reflected immediately.
+export function getClient() {
+  const token = localStorage.getItem('token')
+  return new GraphQLClient(endpoint, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}

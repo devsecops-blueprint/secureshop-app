@@ -1,74 +1,187 @@
-import { Link } from 'react-router-dom'
-import { ArrowRight, Shield, Zap, Lock } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { getClient } from '../graphql/client'
+import { PRODUCTS_QUERY, SEARCH_PRODUCTS_QUERY } from '../graphql/queries'
+import ProductCard from '../components/ui/ProductCard'
+
+const CATEGORIES = ['All', 'electronics', 'footwear', 'bags', 'kitchen', 'furniture', 'fitness']
 
 export default function HomePage() {
+  const [products, setProducts]   = useState([])
+  const [total, setTotal]         = useState(0)
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState('')
+  const [category, setCategory]   = useState('All')
+  const [error, setError]         = useState(null)
+
+  useEffect(() => {
+    fetchProducts()
+  }, [category])
+
+  async function fetchProducts() {
+    setLoading(true)
+    setError(null)
+    try {
+      const client = getClient()
+      const data = await client.request(PRODUCTS_QUERY, {
+        page: 1,
+        pageSize: 20,
+        category: category === 'All' ? null : category,
+      })
+      setProducts(data.products.products)
+      setTotal(data.products.total)
+    } catch (err) {
+      setError('Failed to load products. Is the api-gateway running?')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSearch(e) {
+    e.preventDefault()
+    if (!search.trim()) { fetchProducts(); return }
+    setLoading(true)
+    try {
+      const client = getClient()
+      const data = await client.request(SEARCH_PRODUCTS_QUERY, { query: search })
+      setProducts(data.searchProducts.products)
+      setTotal(data.searchProducts.total)
+    } catch (err) {
+      setError('Search failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen">
-
+    <div style={styles.page}>
       {/* Hero */}
-      <section className="bg-navy text-white py-24 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-primary-600/20 border border-primary-500/30
-                          text-primary-300 text-sm font-medium px-4 py-1.5 rounded-full mb-6">
-            <Shield size={14} />
-            Zero-Trust DevSecOps Platform
-          </div>
-          <h1 className="text-5xl font-bold leading-tight tracking-tight">
-            Shop with confidence.<br />
-            <span className="text-primary-400">Security built in.</span>
-          </h1>
-          <p className="mt-6 text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
-            SecureShop is a fully auditable e-commerce platform secured by
-            Istio mTLS, SPIFFE/SPIRE workload identity, and a complete
-            DevSecOps pipeline — from commit to production.
-          </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
-            <Link to="/products"
-              className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700
-                         text-white font-semibold px-6 py-3 rounded-lg transition-colors">
-              Browse Products
-              <ArrowRight size={18} />
-            </Link>
-            <Link to="/login"
-              className="text-slate-300 hover:text-white font-medium px-6 py-3
-                         border border-slate-600 hover:border-slate-400 rounded-lg transition-colors">
-              Sign in
-            </Link>
-          </div>
-        </div>
-      </section>
+      <div style={styles.hero}>
+        <h1 style={styles.heroTitle}>Everything you need,<br />delivered fast.</h1>
+        <p style={styles.heroSub}>Browse our curated catalogue of premium products.</p>
 
-      {/* Feature strip */}
-      <section className="border-b border-slate-100 py-12 px-4">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-          {[
-            {
-              icon: <Lock className="text-primary-600" size={22} />,
-              title: 'Zero-Trust Security',
-              desc: 'Every service-to-service call is encrypted and verified with mutual TLS via Istio and SPIFFE/SPIRE.'
-            },
-            {
-              icon: <Shield className="text-primary-600" size={22} />,
-              title: 'Supply Chain Integrity',
-              desc: 'Every container image is signed with Cosign. SLSA Level 3 attestation on every build.'
-            },
-            {
-              icon: <Zap className="text-primary-600" size={22} />,
-              title: 'Policy as Code',
-              desc: 'Kyverno enforces security policies on every Kubernetes admission. No manual review gaps.'
-            },
-          ].map((f, i) => (
-            <div key={i} className="flex gap-4">
-              <div className="mt-0.5 flex-shrink-0">{f.icon}</div>
-              <div>
-                <h3 className="font-semibold text-slate-900">{f.title}</h3>
-                <p className="mt-1 text-sm text-slate-500 leading-relaxed">{f.desc}</p>
-              </div>
-            </div>
+        {/* Search */}
+        <form onSubmit={handleSearch} style={styles.searchForm}>
+          <input
+            style={styles.searchInput}
+            placeholder="Search products..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <button type="submit" style={styles.searchBtn}>Search</button>
+        </form>
+      </div>
+
+      <div style={styles.content}>
+        {/* Category filter */}
+        <div style={styles.filters}>
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              style={{ ...styles.filterBtn, ...(category === cat ? styles.filterBtnActive : {}) }}
+              onClick={() => { setCategory(cat); setSearch('') }}
+            >
+              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </button>
           ))}
         </div>
-      </section>
 
+        {/* Results count */}
+        {!loading && (
+          <p style={styles.resultCount}>
+            {total} {total === 1 ? 'product' : 'products'}
+          </p>
+        )}
+
+        {/* Error */}
+        {error && <div style={styles.error}>{error}</div>}
+
+        {/* Loading */}
+        {loading && (
+          <div style={styles.loadingGrid}>
+            {[...Array(8)].map((_, i) => (
+              <div key={i} style={styles.skeleton} />
+            ))}
+          </div>
+        )}
+
+        {/* Product grid */}
+        {!loading && !error && (
+          <div style={styles.grid}>
+            {products.map(product => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+            {products.length === 0 && (
+              <p style={styles.empty}>No products found.</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
+}
+
+const styles = {
+  page: { minHeight: '100vh', background: '#f8fafc' },
+  hero: {
+    background: '#0f172a',
+    padding: '72px 24px',
+    textAlign: 'center',
+  },
+  heroTitle: {
+    fontSize: 'clamp(28px, 5vw, 48px)',
+    fontWeight: 800, color: '#ffffff',
+    lineHeight: 1.2, marginBottom: 16,
+    letterSpacing: '-0.5px',
+  },
+  heroSub: { fontSize: 18, color: '#94a3b8', marginBottom: 32 },
+  searchForm: {
+    display: 'flex', gap: 8, maxWidth: 480,
+    margin: '0 auto',
+  },
+  searchInput: {
+    flex: 1, padding: '12px 16px',
+    borderRadius: 8, border: '1px solid #334155',
+    background: '#1e293b', color: '#ffffff',
+    fontSize: 15,
+  },
+  searchBtn: {
+    padding: '12px 24px', background: '#4f46e5',
+    color: '#ffffff', fontWeight: 600, fontSize: 15,
+    borderRadius: 8, border: 'none', cursor: 'pointer',
+  },
+  content: { maxWidth: 1200, margin: '0 auto', padding: '32px 24px' },
+  filters: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 24 },
+  filterBtn: {
+    padding: '6px 16px', borderRadius: 999,
+    border: '1px solid #e2e8f0', background: '#ffffff',
+    fontSize: 13, fontWeight: 500, color: '#64748b',
+    cursor: 'pointer', transition: 'all 0.15s',
+  },
+  filterBtnActive: {
+    background: '#4f46e5', color: '#ffffff',
+    border: '1px solid #4f46e5',
+  },
+  resultCount: { fontSize: 13, color: '#94a3b8', marginBottom: 20 },
+  error: {
+    background: '#fef2f2', border: '1px solid #fecaca',
+    color: '#b91c1c', padding: '12px 16px',
+    borderRadius: 8, marginBottom: 24, fontSize: 14,
+  },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: 24,
+  },
+  loadingGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+    gap: 24,
+  },
+  skeleton: {
+    height: 320, borderRadius: 12,
+    background: 'linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)',
+    backgroundSize: '200% 100%',
+    animation: 'shimmer 1.5s infinite',
+  },
+  empty: { color: '#94a3b8', gridColumn: '1/-1', textAlign: 'center', padding: 48 },
 }
