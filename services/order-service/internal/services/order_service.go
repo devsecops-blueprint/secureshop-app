@@ -8,6 +8,9 @@ import (
 "time"
 
 "github.com/devsecops-blueprint/secureshop/order-service/internal/kafka"
+pb "github.com/devsecops-blueprint/secureshop/order-service/proto"
+"google.golang.org/grpc"
+"google.golang.org/grpc/credentials/insecure"
 )
 
 type OrderItem struct {
@@ -27,30 +30,52 @@ CreatedAt string
 }
 
 type OrderService struct {
-db       *sql.DB
-producer *kafka.Producer
+db            *sql.DB
+producer      *kafka.Producer
+productClient pb.ProductServiceClient
 }
 
-func NewOrderService(db *sql.DB, producer *kafka.Producer) *OrderService {
+func NewOrderService(db *sql.DB, producer *kafka.Producer, productAddr string) *OrderService {
+conn, err := grpc.NewClient(productAddr,
+grpc.WithTransportCredentials(insecure.NewCredentials()),
+)
+if err != nil {
+log.Printf("warning: could not connect to product-service: %v", err)
 return &OrderService{db: db, producer: producer}
+}
+return &OrderService{
+db:            db,
+producer:      producer,
+productClient: pb.NewProductServiceClient(conn),
+}
 }
 
 func (s *OrderService) CreateOrder(ctx context.Context, userID string, items []OrderItem) (*Order, error) {
-// Calculate total
+if s.productClient != nil {
+for i, item := range items {
+resp, err := s.productClient.GetProduct(ctx, &pb.GetProductRequest{
+ProductId: item.ProductID,
+})
+if err != nil {
+log.Printf("warning: could not fetch price for product %s: %v", item.ProductID, err)
+continue
+}
+items[i].UnitPrice   = resp.Price
+items[i].ProductName = resp.Name
+}
+}
+
 var total float64
 for _, item := range items {
 total += float64(item.Quantity) * item.UnitPrice
 }
 
-// Use a database transaction — either the order AND all items are saved,
-// or nothing is saved. Prevents partial orders in the database.
 tx, err := s.db.BeginTx(ctx, nil)
 if err != nil {
 return nil, fmt.Errorf("failed to begin transaction: %w", err)
 }
 defer tx.Rollback()
 
-// Insert order
 var orderID string
 var createdAt time.Time
 err = tx.QueryRowContext(ctx,
@@ -63,7 +88,6 @@ if err != nil {
 return nil, fmt.Errorf("failed to insert order: %w", err)
 }
 
-// Insert order items
 for _, item := range items {
 _, err = tx.ExecContext(ctx,
 `INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price)
@@ -88,7 +112,6 @@ Items:     items,
 CreatedAt: createdAt.Format(time.RFC3339),
 }
 
-// Publish Kafka event — async, non-blocking to the order response
 go func() {
 event := kafka.OrderCreatedEvent{
 OrderID:   orderID,
