@@ -1,0 +1,268 @@
+name: CI - Notification Service
+
+on:
+  push:
+    branches: [develop]
+    paths: ['services/notification-service/**', '.github/workflows/ci-notification-service.yml']
+  pull_request:
+    branches: [develop, main]
+    paths: ['services/notification-service/**', '.github/workflows/ci-notification-service.yml']
+
+permissions:
+  contents: read
+  id-token: write     # required for Cosign keyless signing (OIDC token request)
+  packages: write      # required to push signed image to GHCR
+  security-events: write  # required to upload SARIF results to the Security tab
+
+env:
+  IMAGE_NAME: secureshop/notification-service
+  GHCR_IMAGE: ghcr.io/devsecops-blueprint/secureshop-notification-service
+
+jobs:
+  security-and-build:
+    runs-on: ubuntu-latest
+    steps:
+
+      # ══════════════════════════════════════════════════════════
+      # SETUP
+      # ══════════════════════════════════════════════════════════
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # pinned — matches the python:3.11-slim base image
+          cache: 'pip'
+          cache-dependency-path: services/notification-service/requirements.txt
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 1 — Secrets scanning (fastest, cheapest, blocks earliest)
+      # ══════════════════════════════════════════════════════════
+      - name: Install Gitleaks
+        run: |
+          GITLEAKS_VERSION="8.21.2"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Run Gitleaks
+        run: gitleaks detect --source=. --verbose --redact
+        # No continue-on-error — a leaked secret must hard-block the merge, always.
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 2 — SAST: Semgrep (report-only phase)
+      # ══════════════════════════════════════════════════════════
+      - name: Run Semgrep
+        run: |
+          pip install semgrep
+          semgrep scan \
+            --config p/python \
+            --config p/owasp-top-ten \
+            --sarif --output semgrep-results.sarif \
+            || true
+        # TODO: remove `|| true` once initial findings are triaged (two-phase rollout)
+        continue-on-error: true
+
+      - name: Upload Semgrep results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: semgrep-results.sarif
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 2b — SCA: pip-audit (dedicated tool, run against the raw
+      # manifest before any build — same role as npm audit for Node)
+      # ══════════════════════════════════════════════════════════
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        working-directory: services/notification-service
+        run: pip-audit -r requirements.txt
+        # Hard-fails on any known vulnerability in the dependency tree.
+        # No continue-on-error — this is a real gate, run early, before any build.
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 2c — CodeQL (separate stage — Python is interpreted,
+      # no build to watch, unlike the Go collapse in api-gateway/order-service)
+      # ══════════════════════════════════════════════════════════
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-extended
+
+      - name: CodeQL Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
+          output: codeql-results.sarif
+          upload: false
+
+      - name: Gate on CodeQL error-level findings
+        run: |
+          ERROR_COUNT=$(jq '[.runs[].results[] | select(.level=="error")] | length' codeql-results.sarif)
+          echo "CodeQL error/critical findings: $ERROR_COUNT"
+          if [ "$ERROR_COUNT" -gt 0 ]; then
+            echo "Blocking: $ERROR_COUNT error-level finding(s) detected."
+            exit 1
+          fi
+          echo "No error-level findings. Warnings (if any) are non-blocking."
+        # No continue-on-error — this IS the gate.
+
+      - name: Upload CodeQL SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: codeql-results.sarif
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 3 — Install deps, build, test (clean separate stage —
+      # not collapsed with CodeQL, unlike Go services)
+      # ══════════════════════════════════════════════════════════
+      - name: Install dependencies
+        working-directory: services/notification-service
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        working-directory: services/notification-service
+        run: pytest
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 4 — Build the container image
+      # ══════════════════════════════════════════════════════════
+      - name: Docker build
+        working-directory: services/notification-service
+        run: docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 5 — Dockerfile hygiene + image scanning
+      # ══════════════════════════════════════════════════════════
+      - name: Install Hadolint
+        run: |
+          curl -sSL -o /usr/local/bin/hadolint \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x /usr/local/bin/hadolint
+
+      - name: Run Hadolint (Dockerfile lint)
+        run: hadolint services/notification-service/Dockerfile
+        continue-on-error: true   # style/best-practice — report-only, not a security gate
+
+      - name: Install Dockle
+        run: |
+          curl -sSL https://github.com/goodwithtech/dockle/releases/download/v0.4.14/dockle_0.4.14_Linux-64bit.tar.gz | tar -xz dockle
+          sudo mv dockle /usr/local/bin/
+
+      - name: Run Dockle (image config lint)
+        run: dockle --exit-code 1 --exit-level fatal ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        # Only hard-fails on FATAL tier (e.g. running as root) — INFO/WARN are non-blocking.
+
+      - name: Install Trivy
+        run: |
+          curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Trivy (image scan — cross-check to pip-audit above)
+        run: |
+          trivy image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --format sarif --output trivy-results.sarif \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        # Primary gate — stricter threshold (HIGH+CRITICAL).
+
+      - name: Upload Trivy SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Install Grype
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Grype (cross-check scan)
+        run: |
+          grype ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --fail-on critical \
+            --output sarif > grype-results.sarif
+        # Deliberately looser threshold than Trivy (critical only) — safety net,
+        # not a duplicate gate. Different CVE database than Trivy.
+
+      - name: Upload Grype SARIF to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: grype-results.sarif
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 6 — Software Bill of Materials
+      # ══════════════════════════════════════════════════════════
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM
+        run: |
+          syft ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -o spdx-json=sbom.spdx.json \
+            -o cyclonedx-json=sbom.cyclonedx.json
+
+      - name: Upload SBOM as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-notification-service-${{ github.sha }}
+          path: |
+            sbom.spdx.json
+            sbom.cyclonedx.json
+          retention-days: 90
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 7 — Supply chain integrity: Cosign (keyless)
+      # ══════════════════════════════════════════════════════════
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign sign --yes ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Attach SBOM as attestation
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign attest --yes \
+            --predicate sbom.cyclonedx.json \
+            --type cyclonedx \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Verify signature (sanity check)
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/devsecops-blueprint/secureshop-app/.github/workflows/.*" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # ══════════════════════════════════════════════════════════
+      # STAGE 8 — Push to GHCR (develop branch only, never on PRs)
+      # ══════════════════════════════════════════════════════════
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag image for GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        run: |
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.GHCR_IMAGE }}:${{ github.sha }}
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.GHCR_IMAGE }}:develop
+
+      - name: Push image to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        run: |
+          docker push ${{ env.GHCR_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.GHCR_IMAGE }}:develop
